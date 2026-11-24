@@ -1,4 +1,7 @@
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { Network } from '@capacitor/network';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 
 /**
  * TODO [M7] Capacidades nativas (6 pts en total: este archivo, PerfilPage.vue y AndroidManifest.xml).
@@ -12,7 +15,28 @@ import { ref } from 'vue';
 export function useConexion() {
   const conectado = ref(true);
   const tipo = ref('unknown');
+
   // TODO [M7]
+  let handle: PluginListenerHandle | undefined;
+
+  onMounted(async () => {
+    const estado = await Network.getStatus();
+
+    conectado.value = estado.connected;
+    tipo.value = estado.connectionType;
+
+    handle = await Network.addListener('networkStatusChange', (estado) => {
+      conectado.value = estado.connected;
+      tipo.value = estado.connectionType;
+    });
+  });
+
+  onUnmounted(async () => {
+    if (handle) {
+      await handle.remove();
+    }
+  });
+
   return { conectado, tipo };
 }
 
@@ -23,4 +47,10 @@ export function useConexion() {
  */
 export async function vibrar() {
   // TODO [M7]
+
+  if (Capacitor.isNativePlatform()) {
+    await Haptics.impact({
+      style: ImpactStyle.Light,
+    });
+  }
 }
