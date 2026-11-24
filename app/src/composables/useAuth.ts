@@ -27,6 +27,14 @@ export const obtenerToken = () => token.value;
 /** TODO [M2] Borrar token y usuario de la memoria (refs) y del almacenamiento cifrado. */
 export async function olvidarSesion() {
   // TODO [M2]
+
+  token.value = null;
+  usuario.value = null;
+
+  await Promise.all([
+    SecureStorage.remove(CLAVE_TOKEN),
+    SecureStorage.remove(CLAVE_USUARIO),
+  ]);
 }
 
 export function useAuth() {
@@ -41,8 +49,29 @@ export function useAuth() {
    *  No atrape el error: LoginPage.vue ya muestra los 422.
    */
   async function login(email: string, password: string) {
-    void [email, password, api, Device, SecureStorage, CLAVE_TOKEN, CLAVE_USUARIO];
-    throw new Error('TODO [M2] login sin implementar');
+
+    const dispositivo = await Device.getInfo();
+
+    const device_name = `${dispositivo.platform} ${dispositivo.model}`.slice(0, 60);
+
+    const respuesta = await api<{
+      token: string;
+      usuario: Usuario;
+    }>('/login', {
+      method: 'POST',
+      body: {
+        email,
+        password,
+        device_name,
+      },
+    });
+
+    await SecureStorage.set(CLAVE_TOKEN, respuesta.token);
+    await SecureStorage.set(CLAVE_USUARIO, { ...respuesta.usuario});
+
+    token.value = respuesta.token;
+    usuario.value = respuesta.usuario;
+    tokenCargado = true;
   }
 
   /**
@@ -51,7 +80,15 @@ export function useAuth() {
    *  Debe ejecutarse una sola vez (use la bandera tokenCargado).
    */
   async function cargarToken() {
-    void tokenCargado;
+
+    if (tokenCargado) {
+      return;
+    }
+
+    tokenCargado = true;
+
+    token.value = (await SecureStorage.get(CLAVE_TOKEN)) as string | null ?? null;
+    usuario.value = (await SecureStorage.get(CLAVE_USUARIO)) as Usuario | null ?? null;
   }
 
   /**
@@ -61,6 +98,18 @@ export function useAuth() {
    */
   async function cerrarSesion() {
     // TODO [M2]
+
+    try {
+      await api('/logout', {
+        method: 'POST',
+      });
+
+    } catch {
+      // Si la API falla, igualmente se elimina la sesión local.
+
+    } finally {
+      await olvidarSesion();
+    }
   }
 
   return { usuario, estaAutenticado, login, cargarToken, cerrarSesion };

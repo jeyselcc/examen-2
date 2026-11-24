@@ -29,6 +29,76 @@ export interface OpcionesApi {
  *  8. En cualquier otro caso, devolver el cuerpo JSON.
  */
 export async function api<T = unknown>(ruta: string, opciones: OpcionesApi = {}): Promise<T> {
-  void [ErrorApi, obtenerToken, olvidarSesion, router, BASE_URL, TIEMPO_MAXIMO_MS, ruta, opciones];
-  throw new Error('TODO [M1] api() sin implementar');
+
+  const url = new URL(BASE_URL + ruta);
+
+  if (opciones.params) {
+    for (const [clave, valor] of Object.entries(opciones.params)) {
+      if (valor !== undefined && valor !== '') {
+        url.searchParams.append(clave, String(valor));
+      }
+    }
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+
+  const token = obtenerToken();
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  if (opciones.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const controlador = new AbortController();
+
+  const tiempo = setTimeout(() => {
+    controlador.abort();
+  }, TIEMPO_MAXIMO_MS);
+
+  let response: Response;
+  let cuerpoJson: any = null;
+
+  try {
+    response = await fetch(url.toString(), {
+      method: opciones.method ?? 'GET',
+      headers,
+      body: opciones.body !== undefined
+        ? JSON.stringify(opciones.body)
+        : undefined,
+      signal: controlador.signal,
+    });
+
+    if (response.status !== 204) {
+      cuerpoJson = await response.json().catch(() => null);
+    }
+
+  } catch {
+    throw new ErrorApi(0, {
+      mensaje: 'No fue posible conectar con la API.',
+    });
+
+  } finally {
+    clearTimeout(tiempo);
+  }
+
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  if (!response.ok) {
+
+    if (response.status === 401 && ruta !== '/login') {
+      await olvidarSesion();
+      await router.replace('/login');
+    }
+
+    throw new ErrorApi(response.status, cuerpoJson);
+  }
+
+  return cuerpoJson as T;
 }
